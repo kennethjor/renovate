@@ -34,7 +34,7 @@ function getObject(url: S3Url) {
   return Promise.resolve({ Body, LastModified });
 }
 
-function mockObject(url: string, content?: string, headers?: any) {
+export function s3mockObject(url: string, content?: string, headers?: any) {
   mockedObjects[url] = content ? content : '';
   if (headers?.['Last-Modified']) {
     mockedTimestamps[url] = headers['Last-Modified'];
@@ -44,15 +44,17 @@ function mockObject(url: string, content?: string, headers?: any) {
 const s3mock = {
   headObject,
   getObject,
-  mockObject,
 };
-export { s3mock };
 
-jest.mock('@aws-sdk/client-s3', () => ({
-  S3: function (this: S3) {
-    return { ...this, ...s3mock };
-  },
-}));
+export function s3mockFactory() {
+  return {
+    S3: function (this: S3) {
+      return { ...this, ...s3mock };
+    },
+  }
+}
+
+//jest.mock('@aws-sdk/client-s3', () => ());
 
 afterEach(() => {
   mockedObjects = {};

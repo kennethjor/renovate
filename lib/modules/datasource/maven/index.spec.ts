@@ -1,7 +1,6 @@
-// eslint-disable-next-line import/order
-import { s3mock } from '../../../../test/s3-mock';
 import { ReleaseResult, getPkgReleases } from '..';
 import * as httpMock from '../../../../test/http-mock';
+import { s3mockFactory, s3mockObject } from '../../../../test/s3-mock';
 import { loadFixture } from '../../../../test/util';
 import { EXTERNAL_HOST_ERROR } from '../../../constants/error-messages';
 import * as hostRules from '../../../util/host-rules';
@@ -102,7 +101,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
     const metadataPath = `/${packagePath}/maven-metadata.xml`;
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(metadataPath).reply(200, meta),
-      s3: () => s3mock.mockObject(`${base}${metadataPath}`, meta),
+      s3: () => s3mockObject(`${base}${metadataPath}`, meta),
     });
   }
 
@@ -110,7 +109,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
   if (html) {
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(indexPath).reply(200, html),
-      s3: () => s3mock.mockObject(`${base}${indexPath}`, html),
+      s3: () => s3mockObject(`${base}${indexPath}`, html),
     });
   } else if (html === null) {
     mockResource(protocol, {
@@ -122,7 +121,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
     const pomPath = `/${packagePath}/${latest}/${artifact}-${latest}.pom`;
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(pomPath).reply(200, pom),
-      s3: () => s3mock.mockObject(`${base}${pomPath}`, pom),
+      s3: () => s3mockObject(`${base}${pomPath}`, pom),
     });
   }
 
@@ -141,7 +140,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
       mockResource(protocol, {
         http: () =>
           httpMock.scope(base).head(pomPath).reply(status, '', headers),
-        s3: () => s3mock.mockObject(`${base}${pomPath}`, '', headers),
+        s3: () => s3mockObject(`${base}${pomPath}`, '', headers),
       });
     });
   }
@@ -153,7 +152,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
         mockResource(protocol, {
           http: () =>
             httpMock.scope(base).get(snapMetaPath).reply(200, snapshot.meta),
-          s3: () => s3mock.mockObject(`${base}${snapMetaPath}`, snapshot.meta),
+          s3: () => s3mockObject(`${base}${snapMetaPath}`, snapshot.meta),
         });
       } else {
         mockResource(protocol, {
@@ -181,7 +180,7 @@ function mockGenericPackage(opts: MockOpts = {}) {
               .scope(base)
               .head(pomUrl)
               .reply(snapshot.jarStatus, '', headers),
-          s3: () => s3mock.mockObject(`${base}${pomUrl}`, '', headers),
+          s3: () => s3mockObject(`${base}${pomUrl}`, '', headers),
         });
       } else {
         mockResource(protocol, {
@@ -207,6 +206,8 @@ function get(
 }
 
 describe('modules/datasource/maven/index', () => {
+  jest.mock('@aws-sdk/client-s3', s3mockFactory);
+  
   beforeEach(() => {
     hostRules.add({
       hostType: datasource,
