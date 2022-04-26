@@ -1,5 +1,11 @@
-// eslint-disable-next-line import/order
-import { s3mock } from '../../../../test/s3-mock';
+import { Readable } from 'stream';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { mockClient } from 'aws-sdk-client-mock';
+import { DateTime } from 'luxon';
 import { ReleaseResult, getPkgReleases } from '..';
 import * as httpMock from '../../../../test/http-mock';
 import { loadFixture } from '../../../../test/util';
@@ -7,6 +13,7 @@ import { EXTERNAL_HOST_ERROR } from '../../../constants/error-messages';
 import * as hostRules from '../../../util/host-rules';
 import { parseUrl } from '../../../util/url';
 import { id as versioning } from '../../versioning/maven';
+import { parseS3Url } from './s3';
 import { MavenDatasource } from '.';
 
 const datasource = MavenDatasource.id;
@@ -20,6 +27,8 @@ interface SnapshotOpts {
   jarStatus?: number;
   meta?: string;
 }
+
+const s3mock = mockClient(S3Client);
 
 interface MockOpts {
   dep?: string;
@@ -102,7 +111,12 @@ function mockGenericPackage(opts: MockOpts = {}) {
     const metadataPath = `/${packagePath}/maven-metadata.xml`;
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(metadataPath).reply(200, meta),
-      s3: () => s3mock.mockObject(`${base}${metadataPath}`, meta),
+      s3: () =>
+        s3mock
+          .on(GetObjectCommand, parseS3Url(`${base}${metadataPath}`))
+          .resolves({
+            Body: Readable.from(Buffer.from(meta)),
+          }),
     });
   }
 
@@ -110,7 +124,12 @@ function mockGenericPackage(opts: MockOpts = {}) {
   if (html) {
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(indexPath).reply(200, html),
-      s3: () => s3mock.mockObject(`${base}${indexPath}`, html),
+      s3: () =>
+        s3mock
+          .on(GetObjectCommand, parseS3Url(`${base}${indexPath}`))
+          .resolves({
+            Body: Readable.from(Buffer.from(html)),
+          }),
     });
   } else if (html === null) {
     mockResource(protocol, {
@@ -122,7 +141,10 @@ function mockGenericPackage(opts: MockOpts = {}) {
     const pomPath = `/${packagePath}/${latest}/${artifact}-${latest}.pom`;
     mockResource(protocol, {
       http: () => httpMock.scope(base).get(pomPath).reply(200, pom),
-      s3: () => s3mock.mockObject(`${base}${pomPath}`, pom),
+      s3: () =>
+        s3mock.on(GetObjectCommand, parseS3Url(`${base}${pomPath}`)).resolves({
+          Body: Readable.from(Buffer.from(pom)),
+        }),
     });
   }
 
@@ -141,7 +163,10 @@ function mockGenericPackage(opts: MockOpts = {}) {
       mockResource(protocol, {
         http: () =>
           httpMock.scope(base).head(pomPath).reply(status, '', headers),
-        s3: () => s3mock.mockObject(`${base}${pomPath}`, '', headers),
+        s3: () =>
+          s3mock
+            .on(HeadObjectCommand, parseS3Url(`${base}${pomPath}`))
+            .resolves({ LastModified: DateTime.fromISO(timestamp).toJSDate() }),
       });
     });
   }
@@ -153,7 +178,12 @@ function mockGenericPackage(opts: MockOpts = {}) {
         mockResource(protocol, {
           http: () =>
             httpMock.scope(base).get(snapMetaPath).reply(200, snapshot.meta),
-          s3: () => s3mock.mockObject(`${base}${snapMetaPath}`, snapshot.meta),
+          s3: () =>
+            s3mock
+              .on(GetObjectCommand, parseS3Url(`${base}${snapMetaPath}`))
+              .resolves({
+                Body: Readable.from(Buffer.from(snapshot.meta)),
+              }),
         });
       } else {
         mockResource(protocol, {
@@ -181,7 +211,12 @@ function mockGenericPackage(opts: MockOpts = {}) {
               .scope(base)
               .head(pomUrl)
               .reply(snapshot.jarStatus, '', headers),
-          s3: () => s3mock.mockObject(`${base}${pomUrl}`, '', headers),
+          s3: () =>
+            s3mock
+              .on(HeadObjectCommand, parseS3Url(`${base}${pomUrl}`))
+              .resolves({
+                LastModified: DateTime.fromISO(timestamp).toJSDate(),
+              }),
         });
       } else {
         mockResource(protocol, {
@@ -219,6 +254,7 @@ describe('modules/datasource/maven/index', () => {
   afterEach(() => {
     hostRules.clear();
     delete process.env.RENOVATE_EXPERIMENTAL_NO_MAVEN_POM_CHECK;
+    s3mock.reset();
   });
 
   it('returns null when metadata is not found', async () => {
@@ -289,25 +325,32 @@ describe('modules/datasource/maven/index', () => {
     expect(res).toEqual({
       display: 'org.example:package',
       group: 'org.example',
+      homepage: 'https://package.example.org/about',
       name: 'package',
       registryUrl: 's3://repobucket',
       releases: [
         {
+          releaseTimestamp: '2020-01-01T00:00:01.000Z',
           version: '0.0.1',
         },
         {
+          releaseTimestamp: '2020-01-01T01:00:00.000Z',
           version: '1.0.0',
         },
         {
+          releaseTimestamp: '2020-01-01T01:00:01.000Z',
           version: '1.0.1',
         },
         {
+          releaseTimestamp: '2020-01-01T01:00:02.000Z',
           version: '1.0.2',
         },
         {
+          releaseTimestamp: '2020-01-01T01:00:03.000Z',
           version: '1.0.3-SNAPSHOT',
         },
         {
+          releaseTimestamp: '2020-01-01T02:00:00.000Z',
           version: '2.0.0',
         },
       ],
